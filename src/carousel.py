@@ -1,9 +1,11 @@
-import pandas as pd
 import os
+import pandas as pd
+import smtplib
 
-from typing import Tuple, List
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from datetime import datetime as dt
-from pandas import DataFrame as Df
+from concurrent.futures import ThreadPoolExecutor
 
 from src.spreadsheet import SpreadSheet
 from src.subscriber import Subscriber
@@ -34,6 +36,8 @@ class Carousel:
         """
         print('Retrieving data')
         self.subs_df = self.spreadsheet.get_data('subscribers')
+        self.subs_df = self.subs_df.drop(['Timestamp'], axis=1)
+        self.subs_df.columns = ['name', 'email', 'interval']
         self.hist_df = self.spreadsheet.get_data('history')
         print('Data retrieved')
     
@@ -85,8 +89,44 @@ class Carousel:
         else:
             self.hist_df.loc[pair.index, "count"] = str(int(pair["count"]) + 1)
     
-    def send_notifications(self, new_pairs: Df) -> None:
+    def send_notifications(self) -> None:
         """
         Send notifications to each member of a pair.
         """
-        print('Sending notifications')
+        with ThreadPoolExecutor(5) as exc:
+            for sub in self.subscribers:
+                exc.submit(self.send_email, sub)
+    
+    def send_email(self, sub: Subscriber) -> None:
+        """
+        Send notification email to the given subscriber.
+        """
+        print(f'sending email to {sub._data["email"]}')
+        body = f"""
+Hi!
+
+You have been matched with {sub.partner._data["name"]} for this week's coffee carousel.
+
+Drop them a line at {sub.partner._data["email"]} to sort something out. 
+
+Till next time,
+
+The Union St Coffee Carousel
+"""
+        msg = MIMEMultipart('alternative')
+        
+        msg['Subject'] = 'Coffee Time'
+        msg['From'] = 'Union St Coffee Carousel'
+        msg['To'] = sub._data["name"]
+
+        content = MIMEText(body, "plain")
+        msg.attach(content)
+
+        user = 'unionstcoffeecarousel@gmail.com'
+        password = 'yjdtaxysrqypling'
+
+        session = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        session.login(user, password)
+
+        session.sendmail(user, [sub._data["email"]], msg.as_string())
+        session.close()
