@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import random
+import time
 
 from pandas import DataFrame as Df
 from typing import Any
@@ -13,6 +14,7 @@ class Subscriber:
     def __init__(self, sub_data: pd.Series, hist_df: Df) -> None:
         self._data = sub_data
         self._hist = self._configure_history(hist_df)
+        self._days = self._data["days"].split(',')
         self.partner = None
     
     def __repr__(self) -> str:
@@ -27,21 +29,29 @@ class Subscriber:
         """
         past_matches = []
         for sub in subs:
-            past_matches.append(self._get_pair_match_count(sub))
-        min_matches = min(past_matches)
-        candidates = []
-        for i, match_count in enumerate(past_matches):
-            if match_count != min_matches:
-                continue  # True if have already matched more than the minimum
-            candidates.append(subs[i])
-        self.partner = self._select_random_item(candidates)
+            days_match = self._get_pair_day_coincidence(sub)
+            if days_match == 0 and self._data["exclusive"] == 'TRUE':
+                continue
+            match_count = self._get_pair_match_count(sub)
+            past_matches.append((match_count, days_match, sub))
+        if len(past_matches) == 0:
+            return
+        
+        # Sort by days match (secondary) then by match count (primary)
+        past_matches.sort(key=lambda x: x[1], reverse=True)
+        past_matches.sort(key=lambda x: x[0])
+
+        self.partner = past_matches[0][2]
         self.partner.partner = self
     
     def _get_pair_match_count(self, sub: Subscriber) -> int:
         pair = self._get_pair(sub)
         if pair is None:
             return 0
-        return int(pair["count"])
+        return len(pair)
+    
+    def _get_pair_day_coincidence(self, sub: Subscriber) -> int:
+        return len([x for x in self._days if x in sub._days])
 
     def _get_pair(self, sub: Subscriber) -> Df:
         pair = self._hist.loc[self._hist["email2"] == sub._data["email"]]
@@ -49,17 +59,19 @@ class Subscriber:
             return None
         return pair
 
-    def _create_pair(self, sub: Subscriber) -> Df:
-        return Df([[self._data["email"], sub._data["email"], '1']], 
-                    columns=self._hist.columns)
+    def create_row(self, sub: Subscriber) -> Df:
+        return Df([[
+            self._data["email"],
+            sub._data["email"],
+            time.ctime(),
+            str(int(time.time()))]], 
+            columns=self._hist.columns)
 
     def _is_involved(self, week_no: int) -> bool:
         return week_no % int(self._data["interval"]) == 0
     
     def _total_matches(self) -> int:
-        if len(self._hist) == 0:
-            return 0
-        return sum([int(x) for x in self._hist["count"].values])
+        return len(self._hist)
     
     def _select_random_item(self, items: list) -> Any:
         return items[random.randint(0, len(items)-1)]

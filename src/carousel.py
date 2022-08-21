@@ -1,11 +1,9 @@
-import os
 import pandas as pd
 import smtplib
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import datetime as dt
-from concurrent.futures import ThreadPoolExecutor
+from email.utils import formataddr
 
 from src.spreadsheet import SpreadSheet
 from src.subscriber import Subscriber
@@ -26,8 +24,8 @@ class Carousel:
         self.configure_subs()
         self.match_pairs()
         self.update_history()
-        if os.environ.get('DEBUG_CAROUSEL') != 'True':
-            self.send_notifications()
+        #if os.environ.get('DEBUG_CAROUSEL') != 'True':
+        self.send_notifications()
         print('All done!')
     
     def get_data(self) -> None:
@@ -37,7 +35,7 @@ class Carousel:
         print('Retrieving data')
         self.subs_df = self.spreadsheet.get_data('subscribers')
         self.subs_df = self.subs_df.drop(['Timestamp'], axis=1)
-        self.subs_df.columns = ['name', 'email', 'interval']
+        self.subs_df.columns = ['name', 'email', 'days', 'exclusive']
         self.hist_df = self.spreadsheet.get_data('history')
         print('Data retrieved')
     
@@ -46,11 +44,12 @@ class Carousel:
         Build Subscriber objects into a list from data.
         """
         self.subscribers = []
-        week_no = dt.utcnow().isocalendar()[1]
+        #week_no = dt.utcnow().isocalendar()[1]
         for _, sub in self.subs_df.iterrows():
             sub = Subscriber(sub, self.hist_df)
-            if not sub._is_involved(week_no):
-                continue
+            # Interval selection no longer implemented
+            #if not sub._is_involved(week_no):
+                #continue
             self.subscribers.append(sub)
         self.subscribers.sort(key=lambda x: x._total_matches())
     
@@ -60,11 +59,12 @@ class Carousel:
         """
         unmatched = self.subscribers.copy()
         while len(unmatched) > 1:
-            sub1 = unmatched.pop(0)
-            if sub1.partner is not None:
+            sub = unmatched.pop(0)
+            if sub.partner is not None:
                 continue
-            sub1.match(unmatched)
-            unmatched.remove(sub1.partner)
+            sub.match(unmatched)
+            if sub.partner is not None:
+                unmatched.remove(sub.partner)
 
     def update_history(self) -> None:
         """
@@ -74,36 +74,23 @@ class Carousel:
         for sub in self.subscribers:
             if sub.partner is None:
                 continue
-            self.update_history_row(sub)
-        self.hist_df = self.hist_df.sort_values('email1')
+            ad_row = sub.create_row(sub.partner)
+            self.hist_df = pd.concat([self.hist_df, ad_row])
         self.spreadsheet.upload('history', self.hist_df)
-    
-    def update_history_row(self, sub: Subscriber) -> None:
-        """
-        Update/insert a historical row given some match.
-        """
-        pair = sub._get_pair(sub.partner)
-        if pair is None:
-            pair = sub._create_pair(sub.partner)
-            self.hist_df = pd.concat([self.hist_df, pair])
-        else:
-            self.hist_df.loc[pair.index, "count"] = str(int(pair["count"]) + 1)
     
     def send_notifications(self) -> None:
         """
         Send notifications to each member of a pair.
         """
-        with ThreadPoolExecutor(5) as exc:
-            for sub in self.subscribers:
-                exc.submit(self.send_email, sub)
+        for sub in self.subscribers:
+            self.send_email(sub)
     
     def send_email(self, sub: Subscriber) -> None:
         """
         Send notification email to the given subscriber.
         """
         print(f'sending email to {sub._data["email"]}')
-        body = f"""
-Hi!
+        body = f"""Hi!
 
 You have been matched with {sub.partner._data["name"]} for this week's coffee carousel.
 
@@ -114,18 +101,19 @@ Till next time,
 The Union St Coffee Carousel
 """
         msg = MIMEMultipart('alternative')
+
+        user = 'unionstcoffeecarousel@outlook.com'
+        password = 'QGXWCPfSz858u7p'
         
         msg['Subject'] = 'Coffee Time'
-        msg['From'] = 'Union St Coffee Carousel'
-        msg['To'] = sub._data["name"]
+        msg['From'] = formataddr(('Union St Coffee Carousel', user))
+        msg['To'] = formataddr((sub._data["name"], sub._data["email"]))
 
         content = MIMEText(body, "plain")
         msg.attach(content)
 
-        user = 'unionstcoffeecarousel@gmail.com'
-        password = 'yjdtaxysrqypling'
-
-        session = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        session = smtplib.SMTP('smtp-mail.outlook.com', 587)
+        session.starttls()
         session.login(user, password)
 
         session.sendmail(user, [sub._data["email"]], msg.as_string())
