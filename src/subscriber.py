@@ -15,6 +15,7 @@ class Subscriber:
         self._data = sub_data
         self._hist = self._configure_history(hist_df)
         self._days = self._data["days"].split(',')
+        self._exclusive = self._data["exclusive"] == 'TRUE'
         self.partner = None
     
     def __repr__(self) -> str:
@@ -30,7 +31,7 @@ class Subscriber:
         past_matches = []
         for sub in subs:
             days_match = self._get_pair_day_coincidence(sub)
-            if days_match == 0 and self._data["exclusive"] == 'TRUE':
+            if days_match == 0 and (self._exclusive or sub._exclusive):
                 continue
             match_count = self._get_pair_match_count(sub)
             past_matches.append((match_count, days_match, sub))

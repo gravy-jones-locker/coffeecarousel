@@ -8,6 +8,9 @@ from email.utils import formataddr
 from src.spreadsheet import SpreadSheet
 from src.subscriber import Subscriber
 
+OUTLOOK_EMAIL = 'unionstcoffeecarousel@outlook.com'
+OUTLOOK_PWORD = 'QGXWCPfSz858u7p'
+        
 class Carousel:
     """
     Spin the carousel to generate coffee partners.
@@ -24,7 +27,6 @@ class Carousel:
         self.configure_subs()
         self.match_pairs()
         self.update_history()
-        #if os.environ.get('DEBUG_CAROUSEL') != 'True':
         self.send_notifications()
         print('All done!')
     
@@ -83,14 +85,27 @@ class Carousel:
         Send notifications to each member of a pair.
         """
         for sub in self.subscribers:
-            self.send_email(sub)
+            msg = MIMEMultipart('alternative')
+            msg['From'] = formataddr(
+                ('Union St Coffee Carousel',
+                OUTLOOK_EMAIL))
+            msg['To'] = formataddr((sub._data["name"], sub._data["email"]))
+            if sub.partner is not None:
+                msg['Subject'] = 'Coffee Time'
+                body = self.compile_match_email(sub)
+            else:
+                msg['Subject'] = 'Bad Luck'
+                body = self.compile_miss_email()
+            content = MIMEText(body, "plain")
+            msg.attach(content)
+            print(f'sending email to {sub._data["email"]}')
+            self.send_email(msg, sub._data["email"])
     
-    def send_email(self, sub: Subscriber) -> None:
+    def compile_match_email(self, sub: Subscriber) -> None:
         """
-        Send notification email to the given subscriber.
+        Compile match notification email to the given subscriber.
         """
-        print(f'sending email to {sub._data["email"]}')
-        body = f"""Hi!
+        return f"""Hi!
 
 You have been matched with {sub.partner._data["name"]} for this week's coffee carousel.
 
@@ -100,21 +115,29 @@ Till next time,
 
 The Union St Coffee Carousel
 """
-        msg = MIMEMultipart('alternative')
 
-        user = 'unionstcoffeecarousel@outlook.com'
-        password = 'QGXWCPfSz858u7p'
-        
-        msg['Subject'] = 'Coffee Time'
-        msg['From'] = formataddr(('Union St Coffee Carousel', user))
-        msg['To'] = formataddr((sub._data["name"], sub._data["email"]))
+    def compile_miss_email(self) -> None:
+        """
+        Compile miss notification email to the given subscriber.
+        """
+        return f"""Hi,
 
-        content = MIMEText(body, "plain")
-        msg.attach(content)
+Unfortunately we couldn't find a match for you this time.
 
+Consider updating your preferences on the Google Form or reply to this email if they have changed already.
+
+Till next time,
+
+The Union St Coffee Carousel
+"""
+
+    def send_email(self, msg: MIMEMultipart, to_addr: str) -> None:
+        """
+        Send the email.
+        """
         session = smtplib.SMTP('smtp-mail.outlook.com', 587)
         session.starttls()
-        session.login(user, password)
+        session.login(OUTLOOK_EMAIL, OUTLOOK_PWORD)
 
-        session.sendmail(user, [sub._data["email"]], msg.as_string())
+        session.sendmail(OUTLOOK_EMAIL, [to_addr], msg.as_string())
         session.close()
