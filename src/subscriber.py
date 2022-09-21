@@ -31,7 +31,7 @@ class Subscriber:
         past_matches = []
         for sub in subs:
             days_match = self._get_pair_day_coincidence(sub)
-            if days_match == 0 and (self._exclusive or sub._exclusive):
+            if days_match == 0 and all([self._exclusive, sub._exclusive]):
                 continue
             match_count = self._get_pair_match_count(sub)
             past_matches.append((match_count, days_match, sub))

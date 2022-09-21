@@ -1,5 +1,8 @@
 import pandas as pd
+import random
+import time
 import smtplib
+import os
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -98,8 +101,10 @@ class Carousel:
                 body = self.compile_miss_email()
             content = MIMEText(body, "plain")
             msg.attach(content)
-            print(f'sending email to {sub._data["email"]}')
-            self.send_email(msg, sub._data["email"])
+            if os.environ["DEBUG_CAROUSEL"] != 'True':
+                print(f'sending email to {sub._data["email"]}')
+                self.send_email(msg, sub._data["email"])
+            time.sleep(random.uniform(1.6, 2.7))
     
     def compile_match_email(self, sub: Subscriber) -> None:
         """
