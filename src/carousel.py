@@ -112,7 +112,7 @@ class Carousel:
         """
         return f"""Hi!
 
-You have been matched with {sub.partner._data["name"]} for this week's coffee carousel.
+You have been matched with {sub.partner._data["name"]} for this month's coffee carousel.
 
 Drop them a line at {sub.partner._data["email"]} to sort something out. 
 
